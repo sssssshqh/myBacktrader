@@ -1,8 +1,8 @@
 <!--
  * @Author: Huang, Quan Hang quanhang.huang@siemens.com
  * @Date: 2024-06-03 16:54:05
- * @LastEditors: Huang, Quan Hang 250901214@qq.com
- * @LastEditTime: 2024-06-04 23:36:58
+ * @LastEditors: Huang, Quan Hang quanhang.huang@siemens.com
+ * @LastEditTime: 2024-06-05 17:33:32
  * @FilePath: \myBacktrader\hqhReadMe.md
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -69,3 +69,34 @@ The layout itself is also really simple, there are just three modules:
 - If you absolutely HAVE to use the Yahoo Finance data specifically, we recommend at least paying for an unofficial API like 
   - RapidAPI, where you stand a good bet there is an active team of developers constantly maintaining the API. Remember RapidAPI does still have a limited usage free tier!
 
+# backtrader 
+## 数据类型
+self.dataclose = self.datas[0].close
+```
+print("hqh type self.datas=    %s" % type(self.datas))
+print("hqh leng self.datas   = %s" % len(self.datas))
+
+print("hqh type self.datas[0]= %s" % type(self.datas[0]))
+print("hqh leng self.datas[0]= %s" % len(self.datas[0]))
+
+print("hqh type self.datas[0].close= %s" % type(self.datas[0].close))
+print("hqh leng self.datas[0].close= %s" % len(self.datas[0].close))
+
+print("hqh type self.dataclose= %s" % type(self.dataclose))
+print("hqh leng self.dataclose= %s" % len(self.dataclose))
+
+print("hqh type self.datas[0].close[0]= %s" % type(self.datas[0].close[0]))
+print("hqh type self.dataclose[0]     = %s" % type(self.dataclose[0]))
+```
+```
+hqh type self.datas=    <class 'list'>
+hqh leng self.datas   = 1
+hqh type self.datas[0]= <class 'backtrader.feeds.yahoo.YahooFinanceCSVData'>
+hqh leng self.datas[0]= 1
+hqh type self.datas[0].close= <class 'backtrader.linebuffer.LineBuffer'>
+hqh leng self.datas[0].close= 1
+hqh type self.dataclose= <class 'backtrader.linebuffer.LineBuffer'>
+hqh leng self.dataclose= 1
+hqh type self.datas[0].close[0]= <class 'float'>
+hqh type self.dataclose[0]     = <class 'float'>
+```
