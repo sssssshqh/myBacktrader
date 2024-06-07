@@ -87,7 +87,7 @@ class TestStrategy(bt.Strategy):
                         self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
                         # Keep track of the created order to avoid a 2nd order
-                        self.order = self.buy()
+                        self.order = self.buy(size=1000)
 
         else:
 
@@ -97,7 +97,7 @@ class TestStrategy(bt.Strategy):
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
                 # Keep track of the created order to avoid a 2nd order
-                self.order = self.sell()
+                self.order = self.sell(size=1000)
 
 
 if __name__ == '__main__':
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     cerebro.broker.setcash(100000.0)
 
     # Set the commission - 0.1% ... divide by 100 to remove the %
-    cerebro.broker.setcommission(commission=0.1)
+    cerebro.broker.setcommission(commission=0.003)
 
     # Print out the starting conditions
     print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())

@@ -16,7 +16,7 @@ import threading
 
 # Global
 maxPortfolio = 0
-isPrint = True
+isPrint = False
 # Create a Stratey
 class TestStrategy(bt.Strategy):
     
@@ -24,12 +24,12 @@ class TestStrategy(bt.Strategy):
         ('grid', {} ),
     )
     # params = (
-    #     ('initPosition', 0),
-    #     ('benchmarkPrice', 0),
-    #     ('gridPrice', []),
-    #     ('eachBSPos', 0),
-    #     ('stepPrice', 0),
-    #     ('initCash', 0),
+    #     ('initPosition', 0),    # 初始持仓
+    #     ('benchmarkPrice', 0),  # 成本价
+    #     ('gridPrice', []),      # 网格
+    #     ('eachBSPos', 0),       # 每次交易份额(股)
+    #     ('stepPrice', 0),       # 网格间隔(元)
+    #     ('initCash', 0),        # 资金
     # )
 
     def log(self, txt, dt=None, doPrint=False):
@@ -39,25 +39,26 @@ class TestStrategy(bt.Strategy):
             print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
-        
-        self.log("**************************", doPrint=isPrint) 
+
+        self.log("------------init----------", doPrint=isPrint) 
         # Keep a reference to the "close" line in the data[0] dataseries
         self.dataclose = self.datas[0].close
 
         # To keep track of pending orders and buy price/commission
         self.order = None
-        self.buyprice = None
-        self.buycomm = None
-        self.broker.getposition(self.datas[0]).size = self.params.grid['initPosition']
-        self.broker.getposition(self.datas[0]).price = self.params.grid['benchmarkPrice']
-        self.broker.setcash(self.params.grid['initCash'])
-        self.totalBuy = math.floor(self.params.grid['initPosition'] / self.params.grid['eachBSPos'])
         self.totalSell = 0
+        self.totalBuy = 0
         
-        # 保存各个网格持有的股数 有序字典-从低价到高价
+        # Init
+        self.broker.setcash(self.params.grid['initCash'])
+        # Overwritten
+        self.params.grid['initPosition'] = 0
+        self.params.grid['gridPrice'] = numpy.around(self.params.grid['gridPrice'], decimals=3)
+        self.params.grid['benchmarkPrice'] = self.params.grid['gridPrice'][-1]
+
+        # 保存各个网格持有的股数 有序字典-从低价到高价  未兼容原先做法，原先有初始持仓
         self.gridMark = OrderedDict()
         _tmpRemainPosition = self.params.grid['initPosition']
-        self.params.grid['gridPrice'] = numpy.around(self.params.grid['gridPrice'], decimals=3)
         for price in self.params.grid['gridPrice']:
             if(price>=self.params.grid['benchmarkPrice']):
                 if((_tmpRemainPosition-self.params.grid['eachBSPos']) >= 0):
@@ -69,9 +70,8 @@ class TestStrategy(bt.Strategy):
             else:
                 self.gridMark[price] = 0
 
-        self.log('gridMark = %s' % self.gridMark, doPrint=isPrint)
-        self.log('posSize  = %s' % self.broker.getposition(self.datas[0]).size, doPrint=isPrint)
-        self.log('posPrice = %s' % self.broker.getposition(self.datas[0]).price, doPrint=isPrint)
+        self.log('eachBSPos = %s, %s' % (self.params.grid['eachBSPos'], self.gridMark), doPrint=isPrint)
+
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -83,17 +83,18 @@ class TestStrategy(bt.Strategy):
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(
-                    'BUY EXECUTED, Price: %.2f, Cost: %.2f, Comm %.2f' %
+                    'BUY EXECUTED, Price: %.2f, Size: %d, Cost: %.2f, Comm %.2f' %
                     (order.executed.price,
+                     order.executed.size,
                      order.executed.value,
                      order.executed.comm), doPrint=isPrint)
 
-                self.buyprice = order.executed.price
-                self.buycomm = order.executed.comm
             else:  # Sell
-                self.log('SELL EXECUTED, Price: %.2f, Cost: %.2f, Comm %.2f' %
+                self.log('SELL EXECUTED, Price: %.2f, Size: %d, Cost: %.2f, Net: %.2f, Comm %.2f' %
                          (order.executed.price,
-                          order.executed.value,
+                          order.executed.size,
+                          - (order.executed.price * order.executed.size),
+                          (- (order.executed.price * order.executed.size) - order.executed.value),
                           order.executed.comm), doPrint=isPrint)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
@@ -106,6 +107,16 @@ class TestStrategy(bt.Strategy):
             return
 
         self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' % (trade.pnl, trade.pnlcomm), doPrint=isPrint)
+        self.log('持仓量  = %d(股), 现价 = %.2f(元), 成本价 = %s(元), 价值 = %.2f(元), 现金 = %s(元)' % (
+            self.broker.getposition(self.datas[0]).size,
+            self.broker.getposition(self.datas[0]).adjbase,
+            self.broker.getposition(self.datas[0]).price,
+            self.broker.getvalue(),
+            self.broker.getcash()
+        ), doPrint=isPrint)
+
+    def start(self):
+        pass
 
     def next(self):
         # Simply log the closing price of the series from the reference
@@ -116,48 +127,64 @@ class TestStrategy(bt.Strategy):
             return
 
         # Buy, Buy, Buy
+        buyPos = 0
         for key in sorted(self.gridMark, reverse=True):
             # 当价格跌到网格下方，且当前网格没有持仓时则买入份额
             if ((key != self.params.grid['gridPrice'][-1]) and (self.dataclose[0] <= key) and (self.gridMark[key] == 0)):
-                self.order = self.buy(size=self.params.grid['eachBSPos'])
+                buyPos += self.params.grid['eachBSPos']
                 self.gridMark[key] = self.params.grid['eachBSPos']
                 self.totalBuy += 1
-                # BUY, BUY, BUY!!! (with default parameters)
-                self.log('BUY CREATE, %.2f' % self.dataclose[0], doPrint=isPrint)
+        
+        if(buyPos>0):
+            self.order = self.buy(size=buyPos)
+            # BUY, BUY, BUY!!! (with default parameters)
+            self.log('BUY CREATE, %.2f, Size:  %d, %s' % (self.dataclose[0], buyPos, self.gridMark), doPrint=isPrint)
+        else:
+            # Sell, Sell, Sell 
+            sellPos = 0
+            for num in range(0, len(self.params.grid['gridPrice'])-1):
+                key = self.params.grid['gridPrice'][num]
+                keyNext = self.params.grid['gridPrice'][num+1]
+                value = self.gridMark[key]
+                if((self.dataclose[0] >= key) and (value > 0)):
+                    if(self.dataclose[0] >= keyNext):
+                        remainPos = value - self.params.grid['eachBSPos']
+                        if(remainPos >= 0):
+                            sellPos += self.params.grid['eachBSPos']
+                            self.gridMark[key] = remainPos
+                            self.totalSell += 1
+                        elif(value>0):
+                            sellPos += value
+                            self.gridMark[key] = 0
+                            self.totalSell += 1
+                        else:
+                            pass
 
-        # Sell, Sell, Sell 
-        for num in range(0, len(self.params.grid['gridPrice'])-1):
-            key = self.params.grid['gridPrice'][num]
-            keyNext = self.params.grid['gridPrice'][num+1]
-            value = self.gridMark[key]
-            if((self.dataclose[0] >= key) and (value > 0)):
-                if(self.dataclose[0] >= keyNext):
-                    remainPos = value - self.params.grid['eachBSPos']
-                    if(remainPos >= 0):
-                        self.order = self.sell(size=self.params.grid['eachBSPos'])
-                        self.gridMark[key] = remainPos
-                    else:
-                        self.order = self.sell(size=value)
-                        self.gridMark[key] = 0
-                    
-                    self.totalSell += 1
-                    # SELL, SELL, SELL!!! (with all possible default parameters)
-                    self.log('SELL CREATE, %.2f' % self.dataclose[0], doPrint=isPrint)
+            if(sellPos>0):
+                self.order = self.sell(size=sellPos)
+                # SELL, SELL, SELL!!! (with all possible default parameters)
+                self.log('SELL CREATE, %.2f, Size:  %d, %s' % (self.dataclose[0], sellPos, self.gridMark), doPrint=isPrint)
 
     def stop(self):
 
         global maxPortfolio
         if (self.broker.getvalue() > maxPortfolio):
             maxPortfolio = self.broker.getvalue()
-            self.log("--------------------------", doPrint=isPrint) 
-            self.log('grid %s Ending Value %.2f' % (self.params.grid, self.broker.getvalue()), doPrint=True)
+            self.log("------------stop----------", doPrint=isPrint) 
             # Print out the final result
-            self.log('Final Portfolio Value: %.2f' % self.broker.getvalue(), doPrint=isPrint)
-            self.log('posSize  = %s' % self.broker.getposition(self.datas[0]).size, doPrint=isPrint)
-            self.log('posPrice = %s' % self.broker.getposition(self.datas[0]).price, doPrint=isPrint)
-            self.log("Total Buy/Sell: %s/%s initBuy: %s" % (self.totalBuy, self.totalSell, math.floor(self.params.grid['initPosition'] / self.params.grid['eachBSPos'])), doPrint=isPrint) 
-            for key, value in self.gridMark.items():
-                self.log("gridMark: [%s] - %s" % (key, value), doPrint=isPrint) 
+            self.log("Total Buy/Sell: %s/%s, 持仓量  = %d(股), 现价 = %.2f(元), %s" % (
+                self.totalBuy,
+                self.totalSell,
+                self.broker.getposition(self.datas[0]).size,
+                self.broker.getposition(self.datas[0]).adjbase,
+                self.gridMark
+            ), doPrint=isPrint) 
+            self.log('Final Portfolio Value: %.2f, Net: %.2f, eachBSPos: %d(股), stepPrice: %.3f(元)' % (
+                self.broker.getvalue(),
+                self.broker.getvalue()-self.params.grid['initCash'],
+                self.params.grid['eachBSPos'],
+                self.params.grid['stepPrice']
+            ), doPrint=True)
             self.log("==========================", doPrint=isPrint) 
 
 if __name__ == '__main__':
@@ -168,8 +195,8 @@ if __name__ == '__main__':
     strageParams = {'initCash': 100000, 'cashUsageRate': 0.7, 'lowLimitPrice': 1.026, 'highLimitPrice': 1.11, 'benchmarkPrice': 1.06}
     grids = []
 
-    # stepPrices = numpy.arange(0.001, 0.04, 0.001)
-    stepPrices = [0.03]
+    stepPrices = numpy.arange(0.001, 0.04, 0.001)
+    # stepPrices = [0.03]
     stepPrices = numpy.around(stepPrices, decimals=3)
     for stepPrice in stepPrices:
         
@@ -229,7 +256,7 @@ if __name__ == '__main__':
         grid['gridPrice'] = numpy.around(gridParams['gridPrice'], decimals=3)
         grid['eachBSPos'] = gridParams['eachBSPos']
         grid['stepPrice'] = gridParams['stepPrice']
-        grid['initCash'] = gridParams['initRemainCash']
+        grid['initCash'] = gridParams['initCash']
         grids.append(grid)
     
     # Add a strategy
@@ -270,5 +297,5 @@ if __name__ == '__main__':
     # print('Max Portfolio Value: %.2f' % maxPortfolio)
 
     # Plot the result
-    if isPrint:
-        cerebro.plot()
+    # if isPrint:
+    #     cerebro.plot()
