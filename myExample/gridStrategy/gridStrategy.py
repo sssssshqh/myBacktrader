@@ -16,7 +16,8 @@ import threading
 
 # Global
 maxPortfolio = 0
-isPrint = False
+isPrint = True
+# isPrint = False
 # Create a Stratey
 class TestStrategy(bt.Strategy):
     
@@ -179,11 +180,12 @@ class TestStrategy(bt.Strategy):
                 self.broker.getposition(self.datas[0]).adjbase,
                 self.gridMark
             ), doPrint=isPrint) 
-            self.log('Final Portfolio Value: %.2f, Net: %.2f, eachBSPos: %d(股), stepPrice: %.3f(元)' % (
+            self.log('Final Portfolio Value: %.2f, Net: %.2f, eachBSPos: %d(股), stepPrice: %.3f(元), %s' % (
                 self.broker.getvalue(),
                 self.broker.getvalue()-self.params.grid['initCash'],
                 self.params.grid['eachBSPos'],
-                self.params.grid['stepPrice']
+                self.params.grid['stepPrice'],
+                self.params.grid['gridPrice']
             ), doPrint=True)
             self.log("==========================", doPrint=isPrint) 
 
@@ -192,11 +194,11 @@ if __name__ == '__main__':
     # Create a cerebro entity
     cerebro = bt.Cerebro(optreturn=False)
 
-    strageParams = {'initCash': 100000, 'cashUsageRate': 0.7, 'lowLimitPrice': 1.026, 'highLimitPrice': 1.11, 'benchmarkPrice': 1.06}
+    strageParams = {'initCash': 100000, 'cashUsageRate': 0.7, 'lowLimitPrice': 0.880, 'highLimitPrice': 1, 'benchmarkPrice': 0.92}
     grids = []
 
-    stepPrices = numpy.arange(0.001, 0.04, 0.001)
-    # stepPrices = [0.03]
+    # stepPrices = numpy.arange(0.001, 0.12, 0.001)
+    stepPrices = [0.028]
     stepPrices = numpy.around(stepPrices, decimals=3)
     for stepPrice in stepPrices:
         
@@ -231,8 +233,8 @@ if __name__ == '__main__':
             gridParams['lowGridPrice'].append(gridParams['benchmarkPrice']-num*gridParams['stepPrice'])
         
         gridParams['gridPrice'] = gridParams['lowGridPrice'] + [gridParams['benchmarkPrice'],] + gridParams['highGridPrice']
-        if(len(gridParams['gridPrice']) < 3):
-            next
+        if((len(gridParams['gridPrice']) < 3) or (len(gridParams['gridPrice']) > 10)):
+            continue
         # 份数， 非股数
         remianPosition = 0
         if (gridParams['lowGridNum'] >= 2):
@@ -265,15 +267,15 @@ if __name__ == '__main__':
     # Datas are in a subfolder of the samples. Need to find where the script is
     # because it could have been called from anywhere
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.join(modpath, '..\\..\\yfDataFeed\\515800.SS\\515800_1d.csv')
+    datapath = os.path.join(modpath, '..\\..\\yfDataFeed\\159652.SZ\\159652_1d.csv')
 
     # Create a Data Feed
     data = bt.feeds.YahooFinanceCSVData(
         dataname=datapath,
         # Do not pass values before this date
-        fromdate=datetime.datetime(2020, 6, 4),
+        fromdate=datetime.datetime(2024, 4, 1),
         # Do not pass values before this date
-        todate=datetime.datetime(2020, 8, 22),
+        todate=datetime.datetime(2024, 6, 9),
         # Do not pass values after this date
         reverse=False)
 
