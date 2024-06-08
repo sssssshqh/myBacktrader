@@ -2,7 +2,7 @@
 Author: Huang, Quan Hang 250901214@qq.com
 Date: 2024-06-07 23:51:31
 LastEditors: Huang, Quan Hang 250901214@qq.com
-LastEditTime: 2024-06-08 00:03:38
+LastEditTime: 2024-06-08 22:43:21
 FilePath: \myBacktrader\myExample\yfinance\downloadETF50.PY
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -21,5 +21,5 @@ import yfinance as yf
 # etf800_5m_8 = yf.download("159652.SS", start="2024-05-27", end="2024-06-03", interval="5m")
 # etf800_5m_9 = yf.download("159652.SS", start="2024-06-03", end="2024-06-09", interval="5m")
 
-etf50_1d = yf.download("159652.SZ", interval="1d")
-etf50_1d.to_csv('./yfDataFeed/159652.SZ/159652_1d.csv')
+etf50_1d = yf.download("515800.SS", interval="1d")
+etf50_1d.to_csv('./yfDataFeed/515800.SS/515800_1d.csv')

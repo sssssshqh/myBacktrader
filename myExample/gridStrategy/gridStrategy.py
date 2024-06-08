@@ -84,19 +84,21 @@ class TestStrategy(bt.Strategy):
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(
-                    'BUY EXECUTED, Price: %.2f, Size: %d, Cost: %.2f, Comm %.2f' %
+                    'BUY EXECUTED, Price: %.2f, Size: %d, Cost: %.2f, Comm %.2f, 持仓量: %d(股)' %
                     (order.executed.price,
                      order.executed.size,
                      order.executed.value,
-                     order.executed.comm), doPrint=isPrint)
+                     order.executed.comm,
+                     self.broker.getposition(self.datas[0]).size), doPrint=isPrint)
 
             else:  # Sell
-                self.log('SELL EXECUTED, Price: %.2f, Size: %d, Cost: %.2f, Net: %.2f, Comm %.2f' %
+                self.log('SELL EXECUTED, Price: %.2f, Size: %d, Cost: %.2f, Net: %.2f, Comm %.2f, 持仓量 %d(股)' %
                          (order.executed.price,
-                          order.executed.size,
+                          - order.executed.size,
                           - (order.executed.price * order.executed.size),
                           (- (order.executed.price * order.executed.size) - order.executed.value),
-                          order.executed.comm), doPrint=isPrint)
+                          order.executed.comm,
+                          self.broker.getposition(self.datas[0]).size), doPrint=isPrint)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log('Order Canceled/Margin/Rejected', doPrint=isPrint)
@@ -108,7 +110,7 @@ class TestStrategy(bt.Strategy):
             return
 
         self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' % (trade.pnl, trade.pnlcomm), doPrint=isPrint)
-        self.log('持仓量  = %d(股), 现价 = %.2f(元), 成本价 = %s(元), 价值 = %.2f(元), 现金 = %s(元)' % (
+        self.log('持仓量  = %d(股), 现价 = %.2f(元), 成本价 = %s(元), 价值 = %.2f(元), 现金 = %.2f(元)' % (
             self.broker.getposition(self.datas[0]).size,
             self.broker.getposition(self.datas[0]).adjbase,
             self.broker.getposition(self.datas[0]).price,
@@ -194,7 +196,7 @@ if __name__ == '__main__':
     # Create a cerebro entity
     cerebro = bt.Cerebro(optreturn=False)
 
-    strageParams = {'initCash': 100000, 'cashUsageRate': 0.7, 'lowLimitPrice': 0.880, 'highLimitPrice': 1, 'benchmarkPrice': 0.92}
+    strageParams = {'initCash': 35000, 'cashUsageRate': 0.8, 'lowLimitPrice': 0.880, 'highLimitPrice': 1, 'benchmarkPrice': 0.92}
     grids = []
 
     # stepPrices = numpy.arange(0.001, 0.12, 0.001)
