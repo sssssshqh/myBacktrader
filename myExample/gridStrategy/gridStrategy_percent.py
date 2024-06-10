@@ -57,7 +57,7 @@ class TestStrategy(bt.Strategy):
         self.log("------------init----------", doPrint=isPrint) 
         # Keep a reference to the "close" line in the data[0] dataseries
         self.dataclose = self.datas[0].close
-
+        self.log("样本标准差/均值: %.2f%%" % (numpy.std(self.dataclose, ddof=1)/numpy.mean(self.dataclose)*100), doPrint=isPrint)
         # To keep track of pending orders and buy price/commission
         self.order = None
         self.totalSell = 0
