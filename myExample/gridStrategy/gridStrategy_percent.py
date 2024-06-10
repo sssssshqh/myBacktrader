@@ -7,7 +7,7 @@ import sys  # To find out the script name (in argv[0])
 
 # Import the backtrader platform
 import backtrader as bt
-
+import backtrader.analyzers as btanalyzers
 import math
 import numpy
 
@@ -17,9 +17,11 @@ import yfinance as yf
 # Global
 maxPortfolio = 0
 isPrint = True
+Analyzer=True
 # isPrint = False
 share="159652.SZ"
 interval="1d"
+
 # Create a Stratey
 class TestStrategy(bt.Strategy):
     
@@ -199,6 +201,7 @@ if __name__ == '__main__':
     stepPercents = numpy.around(stepPercents, decimals=4)
     if isPrint:
         stepPercents = [0.0414]
+    
     for stepPercent in stepPercents:
         
         gridParams = {
@@ -270,7 +273,10 @@ if __name__ == '__main__':
         grids.append(grid)
     
     # Add a strategy
-    cerebro.optstrategy(TestStrategy, grid=grids)
+    if(isPrint):
+        cerebro.addstrategy(TestStrategy, grid=grids[0])
+    else:
+        cerebro.optstrategy(TestStrategy, grid=grids)
 
     # Datas are in a subfolder of the samples. Need to find where the script is
     # because it could have been called from anywhere
@@ -280,9 +286,12 @@ if __name__ == '__main__':
     data = None
     # download
     if (not isPrint):
-        data = yf.download(share, interval="1d")
+        data = yf.download(share, interval=interval)
         data.to_csv(datapath)
-
+    
+    if (not data):
+        exit
+    
     # Create a Data Feed
     data = bt.feeds.YahooFinanceCSVData(
         dataname=datapath,
@@ -306,15 +315,34 @@ if __name__ == '__main__':
     # Print out the starting conditions
     print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
 
-    # Run over everything
-    cerebro.run()
+    # Analyzer
+    # cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='mysharpe')
+    cerebro.addanalyzer(btanalyzers.DrawDown, _name='DrawDown')
+    # cerebro.addanalyzer(btanalyzers.transactions, _name='transactions')
+
+    if(isPrint):
+        # Run over everything
+        thestrats = cerebro.run()
+        thestrat = thestrats[0]
+        print('DrawDown, max.drawdown: %.2f, max.moneydown: %.2f%%, max.len: %s' %(
+              thestrat.analyzers.DrawDown.get_analysis()['max']['drawdown'], 
+              thestrat.analyzers.DrawDown.get_analysis()['max']['moneydown'],
+              thestrat.analyzers.DrawDown.get_analysis()['max']['len']))
+        # for thestrat in thestrats:
+        #     # print('SharpeRatio: %.2f, DrawDown: %.2f, transactions=%.2f' %(
+        #     #     thestrat.analyzers.SharpeRatio.get_analysis(),
+        #     #     thestrat.analyzers.DrawDown.get_analysis(),
+        #     #     thestrat.analyzers.transactions.get_analysis(),))
+
+    else:
+        cerebro.run()
 
     # Print out the Max Portfolio Value
     # global maxPortfolio
     # print('Max Portfolio Value: %.2f' % maxPortfolio)
 
     # Plot the result
-    # if isPrint:
-    #     cerebro.plot()
+    if isPrint:
+        cerebro.plot()
 
     
