@@ -2,7 +2,7 @@
  * @Author: Huang, Quan Hang quanhang.huang@siemens.com
  * @Date: 2024-06-03 16:54:05
  * @LastEditors: Huang, Quan Hang 250901214@qq.com
- * @LastEditTime: 2024-06-10 22:08:22
+ * @LastEditTime: 2024-06-15 11:26:14
  * @FilePath: \myBacktrader\hqhReadMe.md
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 -->
@@ -103,3 +103,68 @@ hqh type self.dataclose[0]     = <class 'float'>
 
 # backtrader
 [Analyzers](https://blog.csdn.net/Castlehe/article/details/113772133) 指标的公式
+
+## [backtrader源码解读](https://www.zhihu.com/column/c_1604522311041966081)
+- [backtrader源码解读 (1)：读懂源码的钥匙——认识元类](https://www.fengstatic.com/archives/2958#4_new)
+  ```
+  class UpperMetaClass(type):
+    def __new__(meta, name, bases, dct):
+        print('[1]', dct)
+        
+        upper_dct = {
+            k if k.startswith("__") else k.upper(): v
+            for k, v in dct.items()
+        }
+        return type.__new__(meta, name, bases, upper_dct)
+
+  class MyClass(metaclass = UpperMetaClass):
+      var = 1
+      def func(self):
+          pass
+
+  print('[2]', MyClass.__dict__)
+
+  [1] {'__module__': '__main__', '__qualname__': 'MyClass', 'var': 1, 'func': <function MyClass.func at 0x00000221683B5550>}
+  te '__weakref__' of 'MyClass' objects>, '__doc__': None}
+  ```
+  __new__方法，该方法接受四个参数，分别为：
+  - 元类MyMetaClass自身；
+  - 创建类的名称；
+  - 创建类的父类组成的元组；
+  - 创建类的属性名或方法名为键，对应的属性值或函数为值所组成的字典。
+- [backtrader源码解读 (2)：读懂源码的钥匙——元类进阶](https://www.fengstatic.com/archives/2961)
+  ```
+  # example 1
+  class MyClass:
+    def __call__(self, num):
+        print(f'[{num}] {self}')
+
+  myobj = MyClass()
+
+  myobj(1)
+  myobj.__call__(2)
+
+  [1] <__main__.MyClass object at 0x0000017DCE6B7790>
+  [2] <__main__.MyClass object at 0x0000017DCE6B7790>
+
+  # example 2.1
+  class MyMetaClass(type):
+      def __call__(cls):
+          print('[1]', cls)
+
+  class MyClass(metaclass = MyMetaClass):
+      pass
+
+  myobj = MyClass()
+  print('[2]', myobj is None)
+
+  [1] <class '__main__.MyClass'>
+  [2] True
+  ```
+  super: 子类中可以使用super调用父类的方法
+  - 第二个参数决定调用方法的对象并确定使用哪一条MRO链，第一个参数决定在MRO链中从哪个位置寻找其最近的父类以调用该父类的方法
+  __call__
+  - __call__方法是Python中特殊的实例方法，它用于对实例对象的"( )"运算符进行设定："实例对象( )"相当于实例对象调用__call__方法，即"实例对象.__call__( )"。
+- [backtrader源码解读 (3)：底层基石——metabase模块 (上篇)](https://www.fengstatic.com/archives/2963)
+  - doprenew、donew、dopreinit、doinit、dopostinit
+- [backtrader源码解读 (4)：底层基石——metabase模块 (下篇)](https://zhuanlan.zhihu.com/p/602906986?ssr_src=heifetz)
