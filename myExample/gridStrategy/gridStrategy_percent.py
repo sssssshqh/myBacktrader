@@ -10,25 +10,29 @@ import backtrader as bt
 import backtrader.analyzers as btanalyzers
 import math
 import numpy
+import selectETF
 
 from collections import OrderedDict
 import yfinance as yf
+import pandas as pd
+
 
 # Global
-maxPortfolio = 0
-isPrint = True
-Analyzer=True
-# isPrint = False
-share="159652.SZ"
-interval="1d"
+# Portfolio = {
+#   share: {
+#       maxPortfolio: 0,
+#       maxPortfolioPrint: ''
+#       maxPortfolioGrid: {}
+#   },
+#   ...
+# }
+Portfolio = {}
 
 # Create a Stratey
-class TestStrategy(bt.Strategy):
-    
-    params = (
-        ('grid', {} ),
-    )
-    # params = (
+# params = {
+    # 'isPrint': False
+    # 'grid': (
+    #     ('share', 0),        # 股票
     #     ('initCash', 0),        # 资金
     #     ('eachBSPos', 0),       # 每次交易份额(股)
     #     ('stepPercent', 0),     # 网格间隔 %
@@ -36,8 +40,14 @@ class TestStrategy(bt.Strategy):
     #     ('benchmarkPrice', 0),  # 基准价(元)
     #     ('lowLimitPrice', 0),   # 最低限价(元)
     #     ('highLimitPrice', 0),  # 最高限价(元)
-    # )
+    # ) }
 
+class TestStrategy(bt.Strategy):
+    
+    params = (
+        ('grid', {} ),
+        ('isPrint', False)
+    )
     
     def getBuyPos(self, cash, price, position):
         maxPos = math.floor(cash / price / 100) * 100 
@@ -54,10 +64,10 @@ class TestStrategy(bt.Strategy):
 
     def __init__(self):
 
-        self.log("------------init----------", doPrint=isPrint) 
+        self.log("------------init----------", doPrint=self.params.isPrint) 
         # Keep a reference to the "close" line in the data[0] dataseries
         self.dataclose = self.datas[0].close
-        self.log("样本标准差/均值: %.2f%%" % (numpy.std(self.dataclose, ddof=1)/numpy.mean(self.dataclose)*100), doPrint=isPrint)
+        self.log("样本标准差/均值: %.2f%%" % (numpy.std(self.dataclose, ddof=1)/numpy.mean(self.dataclose)*100), doPrint=self.params.isPrint)
         # To keep track of pending orders and buy price/commission
         self.order = None
         self.totalSell = 0
@@ -67,8 +77,10 @@ class TestStrategy(bt.Strategy):
         # Init
         self.broker.setcash(self.params.grid['initCash'])
 
-        self.log('initCash = %d, eachBSPos = %d, stepPercent = %.2f%%' % (self.params.grid['initCash'], self.params.grid['eachBSPos'], 
-                    self.params.grid['stepPercent']*100), doPrint=isPrint)
+        self.log('share = %s, initCash = %d, eachBSPos = %d, stepPercent = %.2f%%' % (
+                    self.params.grid['share'],
+                    self.params.grid['initCash'], self.params.grid['eachBSPos'], 
+                    self.params.grid['stepPercent']*100), doPrint=self.params.isPrint)
 
 
     def notify_order(self, order):
@@ -89,7 +101,7 @@ class TestStrategy(bt.Strategy):
                      order.executed.size,
                      order.executed.value,
                      order.executed.comm,
-                     self.broker.getposition(self.datas[0]).size), doPrint=isPrint)
+                     self.broker.getposition(self.datas[0]).size), doPrint=self.params.isPrint)
 
             else:  # Sell
                 self.totalSell += 1
@@ -99,10 +111,10 @@ class TestStrategy(bt.Strategy):
                           - (order.executed.price * order.executed.size),
                           (- (order.executed.price * order.executed.size) - order.executed.value),
                           order.executed.comm,
-                          self.broker.getposition(self.datas[0]).size), doPrint=isPrint)
+                          self.broker.getposition(self.datas[0]).size), doPrint=self.params.isPrint)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected', doPrint=isPrint)
+            self.log('Order Canceled/Margin/Rejected', doPrint=self.params.isPrint)
 
         self.order = None
 
@@ -110,21 +122,21 @@ class TestStrategy(bt.Strategy):
         if not trade.isclosed:
             return
 
-        self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' % (trade.pnl, trade.pnlcomm), doPrint=isPrint)
+        self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' % (trade.pnl, trade.pnlcomm), doPrint=self.params.isPrint)
         self.log('持仓量  = %d(股), 现价 = %.2f(元), 成本价 = %s(元), 价值 = %.2f(元), 现金 = %.2f(元)' % (
             self.broker.getposition(self.datas[0]).size,
             self.broker.getposition(self.datas[0]).adjbase,
             self.broker.getposition(self.datas[0]).price,
             self.broker.getvalue(),
             self.broker.getcash()
-        ), doPrint=isPrint)
+        ), doPrint=self.params.isPrint)
 
     def start(self):
         pass
 
     def next(self):
         # Simply log the closing price of the series from the reference
-        self.log('Close, %.2f' % self.dataclose[0], doPrint=isPrint)
+        self.log('Close, %.2f' % self.dataclose[0], doPrint=self.params.isPrint)
 
         # Check if an order is pending ... if yes, we cannot send a 2nd one
         if self.order:
@@ -142,7 +154,7 @@ class TestStrategy(bt.Strategy):
             # BUY, BUY, BUY!!! (with default parameters)
             buyPos = self.getBuyPos(cash=self.broker.getcash(), price=self.dataclose[0], position=(self.params.grid['eachBSPos']*totalBuyNum))
             self.order = self.buy(size=buyPos)
-            self.log('BUY CREATE, %.2f, Size:  %d' % (self.dataclose[0], self.params.grid['eachBSPos'] * totalBuyNum), doPrint=isPrint)
+            self.log('BUY CREATE, %.2f, Size:  %d' % (self.dataclose[0], self.params.grid['eachBSPos'] * totalBuyNum), doPrint=self.params.isPrint)
         else:
             if (self.dataclose[0] <= (self.benchmarkPrice * ( 1 - self.params.grid['stepPercent'])) and 
                 self.dataclose[0] <= self.params.grid['highLimitPrice']):
@@ -151,7 +163,7 @@ class TestStrategy(bt.Strategy):
                 self.order = self.buy(size=buyPos)
                 self.log('BUY CREATE, %.2f, benchmarkPrice: %.2f: -%.2f%%, Size:  %d, ' % (self.dataclose[0], 
                             self.benchmarkPrice, (self.benchmarkPrice - self.dataclose[0]) / self.benchmarkPrice * 100, 
-                            self.params.grid['eachBSPos']), doPrint=isPrint)
+                            self.params.grid['eachBSPos']), doPrint=self.params.isPrint)
             
             elif (self.dataclose[0] >= (self.benchmarkPrice * ( 1 + self.params.grid['stepPercent'])) and
                   self.dataclose[0] >= self.params.grid['lowLimitPrice']):
@@ -162,18 +174,21 @@ class TestStrategy(bt.Strategy):
                         # SELL, SELL, SELL!!! (with all possible default parameters)
                         self.log('SELL CREATE, %.2f, benchmarkPrice: %.2f: +%.2f%%, Size:  %d' % (self.dataclose[0], 
                                     self.benchmarkPrice, (self.dataclose[0] - self.benchmarkPrice) / self.benchmarkPrice * 100,                                                              
-                                    remainPos), doPrint=isPrint)
+                                    remainPos), doPrint=self.params.isPrint)
             else:
                 pass
 
     def stop(self):
 
-        global maxPortfolio
-        if (self.broker.getvalue() > maxPortfolio):
-            maxPortfolio = self.broker.getvalue()
-            self.log("------------stop----------", doPrint=isPrint) 
+        global Portfolio
+        global maxPortfolioPrint
+        global maxPortfolioGrid
+        if (self.broker.getvalue() > Portfolio[self.params.grid['share']].maxPortfolio):
+            Portfolio[self.params.grid['share']].maxPortfolio = self.broker.getvalue()
+            self.log("------------stop----------", doPrint=self.params.isPrint) 
             # Print out the final result
-            self.log('Final Portfolio Value: %.2f, Net: %.2f, Percent: %.2f%%, eachBSPos: %d(股), stepPercent: %.2f%%, benchmarkPrice: %.2f(元) totalGridNum: %d(个), Buy/Sell: %s/%s, 持仓量  = %d(股), 现价 = %.2f(元)' % (
+            self.params.grid['share'].maxPortfolioPrint = ('%s Final Portfolio Value: %.2f, Net: %.2f, Percent: %.2f%%, eachBSPos: %d(股), stepPercent: %.2f%%, benchmarkPrice: %.2f(元) totalGridNum: %d(个), Buy/Sell: %s/%s, 持仓量  = %d(股), 现价 = %.2f(元)' % (
+                self.params.grid['share'],
                 self.broker.getvalue(),
                 self.broker.getvalue()-self.params.grid['initCash'],
                 (self.broker.getvalue()-self.params.grid['initCash']) / self.params.grid['initCash'] * 100,
@@ -185,164 +200,254 @@ class TestStrategy(bt.Strategy):
                 self.totalSell,
                 self.broker.getposition(self.datas[0]).size,
                 self.broker.getposition(self.datas[0]).adjbase
-            ), doPrint=True)
-            self.log("==========================", doPrint=isPrint) 
+            ))
+            self.log(self.params.grid['share'].maxPortfolioPrint, doPrint=self.params.isPrint)
+            Portfolio[self.params.grid['share']].maxPortfolioGrid = self.params.grid
+            self.log("==========================", doPrint=self.params.isPrint) 
 
-if __name__ == '__main__':
-
-    # Create a cerebro entity
-    cerebro = bt.Cerebro(optreturn=False)
-
-    strageParams = {'initCash': 35000, 'cashUsageRate': 0.9, 'lowLimitPrice': 0.88, 'highLimitPrice': 1, 'benchmarkPrice': '1'}
-    grids = []
-
-    percent = round(((strageParams['highLimitPrice'] / strageParams['lowLimitPrice']) - 1), 4)
-    stepPercents = numpy.arange(0.0001, percent, 0.0001)
-    stepPercents = numpy.around(stepPercents, decimals=4)
-    if isPrint:
-        stepPercents = [0.0414]
-    
-    for stepPercent in stepPercents:
+# 根据输入自动计算每次买入和卖出份额的数值, 返回
+#     eachBSPos 
+#     totalGridNum
+#     benchmarkPrice
+#     priceGrides  []
+#     cashGrides   []
+#     由输入补全
+#     initCash
+#     stepPercent
+#     lowLimitPrice
+#     highLimitPrice
+#     cashUsageRate
+def getEachBSPos(share, lowLimitPrice, highLimitPrice, stepPercent, initCash, cashUsageRate):
+    grid = {}
         
-        gridParams = {
-            'initCash': strageParams['initCash'],
-            'cashUsageRate': strageParams['cashUsageRate'],  # To prevent loss too much in the early stages and cann't buy sufficient positions at the low price level
-            'lowLimitPrice': strageParams['lowLimitPrice'],
-            'highLimitPrice': strageParams['highLimitPrice'],
-            
-            'stepPercent': 0.0001,   # 唯一变量
-            
-            # 计算得出值 
-            'totalGridNum': 0,       # 总共格子数
-            'eachBSPos': 0,          #  每次交易股数(股) 整100股/1手交易
-            'benchmarkPrice': 1,     # 取中间值， 这里没用到
-        }
-        
-        gridParams['stepPercent'] = stepPercent
-        gridParams['benchmarkPrice'] = round(((gridParams['highLimitPrice'] + gridParams['lowLimitPrice']) / 2), 3)
-        
-        lowPrice = gridParams['lowLimitPrice']
-        highPrice = gridParams['highLimitPrice']
-        priceGrid = []
-        cashGride = []
+    # 计算得出值 
+    totalGridNum = 0        # 总共格子数
+    eachBSPos = 0           #  每次交易股数(股) 整100股/1手交易
 
-        # 最多上下10格
-        if (lowPrice * math.pow((1+stepPercent), 11) < highPrice):
-            continue
-        else:
-            curPrice = lowPrice
-            for num in range(0, 10):
-                curPrice = round(curPrice*(1+stepPercent), 3)
-                if(curPrice > gridParams['highLimitPrice']):
-                    break
-                else:
-                    gridParams['totalGridNum'] += 1
-                    highPrice = curPrice
-                    priceGrid.append(curPrice)
-        # 最少2格
-        if(gridParams['totalGridNum']<2):
-            continue 
+    # 临时变量
+    lowPrice = lowLimitPrice
+    highPrice = highLimitPrice
+    priceGrides = []
+    cashGrides = []
 
-
-        # 每一份 金额
-        useCash = gridParams['initCash'] * gridParams['cashUsageRate']
-        aveagePrice = (lowPrice + highPrice) / 2
-        gridNumAdj = (( aveagePrice / lowPrice) * gridParams['totalGridNum'])
-        gridParams['eachBSPos'] = math.floor( useCash / gridNumAdj / aveagePrice / 100 ) * 100
-        
-        if(gridParams['eachBSPos']==0):
-            continue
-
-        for price in priceGrid:
-            cash = round(price * gridParams['eachBSPos'], 3)
-            if(len(cashGride)==0):
-                cashGride.append(cash)
-            else:
-                cashGride.append(cash+cashGride[len(cashGride)-1])
-
-        cashGride = numpy.around(cashGride, decimals=3)
-    
-        grid = {}
-        grid['eachBSPos'] = gridParams['eachBSPos']
-        grid['stepPercent'] = gridParams['stepPercent']
-        grid['totalGridNum'] = gridParams['totalGridNum']
-        grid['initCash'] = gridParams['initCash']
-        grid['benchmarkPrice'] = gridParams['benchmarkPrice']
-        grid['lowLimitPrice'] = gridParams['lowLimitPrice']
-        grid['highLimitPrice'] = gridParams['highLimitPrice']
-        grids.append(grid)
-    
-    # Add a strategy
-    if(isPrint):
-        cerebro.addstrategy(TestStrategy, grid=grids[0])
+    # 最多上下10格
+    if (lowPrice * math.pow((1+stepPercent), 11) < highPrice):
+        return grid
     else:
-        cerebro.optstrategy(TestStrategy, grid=grids)
+        curPrice = lowPrice
+        for num in range(0, 10):
+            curPrice = round(curPrice*(1+stepPercent), 3)
+            if(curPrice > highLimitPrice):
+                break
+            else:
+                totalGridNum += 1
+                highPrice = curPrice
+                priceGrides.append(curPrice)
+    # 最少2格
+    if(totalGridNum < 2):
+        return grid 
 
-    # Datas are in a subfolder of the samples. Need to find where the script is
-    # because it could have been called from anywhere
+
+    # 每一份 金额
+    useCash = initCash * cashUsageRate
+    aveagePrice = (lowPrice + highPrice) / 2
+    gridNumAdj = (( aveagePrice / lowPrice) * totalGridNum)
+    eachBSPos = math.floor( useCash / gridNumAdj / aveagePrice / 100 ) * 100
+    
+    if(eachBSPos == 0):
+        return grid 
+
+    for price in priceGrides:
+        cash = round(price * eachBSPos, 3)
+        if(len(cashGrides)==0):
+            cashGrides.append(cash)
+        else:
+            cashGrides.append(cash+cashGrides[len(cashGrides)-1])
+
+    cashGrides = numpy.around(cashGrides, decimals=3)
+    
+    grid['eachBSPos'] = eachBSPos
+    grid['totalGridNum'] = totalGridNum
+    grid['benchmarkPrice'] = round(((priceGrides[0] + priceGrides[-1]) / 2), 3)
+    grid['priceGrides'] = priceGrides
+    grid['cashGrides'] = cashGrides
+    # 由输入补全
+    grid['share'] = share
+    grid['initCash'] = initCash
+    grid['stepPercent'] = stepPercent
+    grid['lowLimitPrice'] = lowLimitPrice
+    grid['highLimitPrice'] = highLimitPrice
+    grid['cashUsageRate'] = cashUsageRate
+    return grid
+
+
+def getYFcsvData(share, interval, fromDate, toDate):
+
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    csvpath='..\\..\\yfDataFeed\\' + share + '_' + interval + '.csv'
-    datapath = os.path.join(modpath, csvpath)
-    data = None
-    # download
-    if (not isPrint):
-        data = yf.download(share, interval=interval)
-        data.to_csv(datapath)
-    
-    if (not data):
-        exit
-    
+    datapath = os.path.abspath(os.path.join(modpath, f'..\\..\\yfDataFeed\\{share}_{interval}.csv'))
+
     # Create a Data Feed
     data = bt.feeds.YahooFinanceCSVData(
         dataname=datapath,
         # Do not pass values before this date
-        fromdate=datetime.datetime(2024, 4, 1),
+        fromdate=datetime.datetime.strptime(fromDate, '%Y-%m-%d'),
         # Do not pass values before this date
-        todate=datetime.datetime(2024, 6, 9),
+        todate=datetime.datetime.strptime(toDate, '%Y-%m-%d'),
         # Do not pass values after this date
         reverse=False)
+
+    return data
+
+def getCsvData(share, interval, fromDate, toDate):
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+    sharPath = os.path.abspath(os.path.join(modpath, f'..\\..\\yfDataFeed\\{share}_{interval}.csv'))
+    shareData = pd.read_csv(sharPath)
     
+    formIndexs=shareData[shareData.Date==fromDate].index.tolist()
+    toIndexs=shareData[shareData.Date==toDate].index.tolist()
+
+    shareDataSlice = None
+    if((len(formIndexs)!=0) and len(toIndexs)!=0):
+        formIndex = formIndexs[0]
+        toIndex = toIndexs[0]
+
+        if((not math.isnan(formIndex)) and (not math.isnan(toIndex))):
+            shareDataSlice = shareData.loc[formIndex:toIndex].reset_index(drop=True)
+
+    return shareDataSlice
+
+# 获取最优的每次买入和卖出百分比值
+def getBestStepPercent(share, lowLimitPrice, highLimitPrice, fromDate, toDate,
+                        interval='1d', initCash=35000, cashUsageRate=0.9, commission=0.003):
+    
+    percent = round(((highLimitPrice / lowLimitPrice) - 1), 4)
+    stepPercents = numpy.arange(0.0001, percent, 0.0001)
+    stepPercents = numpy.around(stepPercents, decimals=4)
+    
+    grids = []
+    for stepPercent in stepPercents:
+        grid = getEachBSPos(share=share, lowLimitPrice=lowLimitPrice, highLimitPrice=highLimitPrice, stepPercent=stepPercent, initCash=initCash, cashUsageRate=cashUsageRate)
+        if(len(grid) != 0):
+            grids.append(grid)
+    
+    # Create a cerebro entity
+    cerebro = bt.Cerebro(optreturn=False)
+
+    # Add a strategy
+    # if(isPrint):
+    #     cerebro.addstrategy(TestStrategy, grid=grids[0], isPrint=True)
+    # else:
+    cerebro.optstrategy(TestStrategy, grid=grids, isPrint=False)
+
+    data = getYFcsvData(share=share, interval=interval, fromDate=fromDate, toDate=toDate)
     
     # Add the Data Feed to Cerebro
     cerebro.adddata(data)
 
     # Set the commission - 0.1% ... divide by 100 to remove the %
-    cerebro.broker.setcommission(commission=0.003)
-
-    # Add a FixedSize sizer according to the stake
-    cerebro.addsizer(bt.sizers.SizerFix, stake=1)
-    
-    # Print out the starting conditions
-    print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
-
+    cerebro.broker.setcommission(commission=commission)
+  
     # Analyzer
     # cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='mysharpe')
     cerebro.addanalyzer(btanalyzers.DrawDown, _name='DrawDown')
     # cerebro.addanalyzer(btanalyzers.transactions, _name='transactions')
 
-    if(isPrint):
-        # Run over everything
-        thestrats = cerebro.run()
-        thestrat = thestrats[0]
-        print('DrawDown, max.drawdown: %.2f, max.moneydown: %.2f%%, max.len: %s' %(
-              thestrat.analyzers.DrawDown.get_analysis()['max']['drawdown'], 
-              thestrat.analyzers.DrawDown.get_analysis()['max']['moneydown'],
-              thestrat.analyzers.DrawDown.get_analysis()['max']['len']))
-        # for thestrat in thestrats:
-        #     # print('SharpeRatio: %.2f, DrawDown: %.2f, transactions=%.2f' %(
-        #     #     thestrat.analyzers.SharpeRatio.get_analysis(),
-        #     #     thestrat.analyzers.DrawDown.get_analysis(),
-        #     #     thestrat.analyzers.transactions.get_analysis(),))
+    # if(isPrint):
+    #     # Run over everything
+    #     thestrats = cerebro.run()
+    #     thestrat = thestrats[0]
+    #     print('DrawDown, max.drawdown: %.2f, max.moneydown: %.2f%%, max.len: %s' %(
+    #           thestrat.analyzers.DrawDown.get_analysis()['max']['drawdown'], 
+    #           thestrat.analyzers.DrawDown.get_analysis()['max']['moneydown'],
+    #           thestrat.analyzers.DrawDown.get_analysis()['max']['len']))
 
-    else:
-        cerebro.run()
 
-    # Print out the Max Portfolio Value
-    # global maxPortfolio
-    # print('Max Portfolio Value: %.2f' % maxPortfolio)
+    # else:
+    cerebro.run()
 
     # Plot the result
-    if isPrint:
-        cerebro.plot()
+    # if isPrint:
+    #     cerebro.plot()
 
+# TODO:
+def getBSinfo(share, lowLimitPrice, highLimitPrice, fromDate, toDate,
+                interval='1d', initCash=35000, cashUsageRate=0.9, commission=0.003):
+
+    percent = round(((highLimitPrice / lowLimitPrice) - 1), 4)
+    stepPercents = numpy.arange(0.0001, percent, 0.0001)
+    stepPercents = numpy.around(stepPercents, decimals=4)
     
+    grids = []
+    for stepPercent in stepPercents:
+        grid = getEachBSPos(share=share, lowLimitPrice=lowLimitPrice, highLimitPrice=highLimitPrice, stepPercent=stepPercent, initCash=initCash, cashUsageRate=cashUsageRate)
+        if(len(grid) != 0):
+            grids.append(grid)
+    
+    # Create a cerebro entity
+    cerebro = bt.Cerebro(optreturn=False)
+
+    # Add a strategy
+    # if(isPrint):
+    #     cerebro.addstrategy(TestStrategy, grid=grids[0], isPrint=True)
+    # else:
+    cerebro.optstrategy(TestStrategy, grid=grids, isPrint=False)
+
+    data = getYFcsvData(share=share, interval=interval, fromDate=fromDate, toDate=toDate)
+    
+    # Add the Data Feed to Cerebro
+    cerebro.adddata(data)
+
+    # Set the commission - 0.1% ... divide by 100 to remove the %
+    cerebro.broker.setcommission(commission=commission)
+  
+    # Analyzer
+    # cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='mysharpe')
+    cerebro.addanalyzer(btanalyzers.DrawDown, _name='DrawDown')
+    # cerebro.addanalyzer(btanalyzers.transactions, _name='transactions')
+
+    # if(isPrint):
+    #     # Run over everything
+    #     thestrats = cerebro.run()
+    #     thestrat = thestrats[0]
+    #     print('DrawDown, max.drawdown: %.2f, max.moneydown: %.2f%%, max.len: %s' %(
+    #           thestrat.analyzers.DrawDown.get_analysis()['max']['drawdown'], 
+    #           thestrat.analyzers.DrawDown.get_analysis()['max']['moneydown'],
+    #           thestrat.analyzers.DrawDown.get_analysis()['max']['len']))
+
+
+    # else:
+    cerebro.run()
+    # cerebro.plot()
+
+def readETFResult():
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+    etfResultPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\ETF_result.xlsx'))
+    etfData = pd.read_excel(etfResultPath, sheet_name='ETF')
+    return etfData
+
+if __name__ == '__main__':
+
+    downPoint = 0.9
+    upPoint = 1.1
+
+    fromDate = '2024-04-01'
+    toDate = '2024-06-14'
+    interval = '1d'
+    
+    etfData = readETFResult()
+    for share in etfData['StockCode']:
+        shareData = getCsvData(share=share, interval=interval, fromDate=fromDate, toDate=toDate)
+        print(type(shareData))
+        print(shareData)
+        adjClose = shareData.loc[:, 'Adj Close']
+        print(type(adjClose))
+        print(adjClose)
+        lowPrice = adjClose.min()
+        highPrice = adjClose.max()
+        lowLimitPrice = round((lowPrice * downPoint), 3)
+        highLimitPrice = round((highPrice * upPoint), 3)
+
+        # getBestStepPercent(share='159652.SZ', lowLimitPrice=0.88, highLimitPrice=1, fromDate='2024-04-01', toDate='2024-06-14')
+        # if(maxPortfolio > 0):
+        #     print(maxPortfolioGrid)
+        #     print(maxPortfolioPrint)
