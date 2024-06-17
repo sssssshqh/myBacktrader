@@ -15,8 +15,8 @@ import selectETF
 from collections import OrderedDict
 import yfinance as yf
 import pandas as pd
-import threading
-
+import shutil
+import csv
 
 # Create a Stratey
 # params = {
@@ -169,15 +169,9 @@ class TestStrategy(bt.Strategy):
     def stop(self):
 
         self.log("------------stop----------", doPrint=self.params.isPrint) 
-        
-        share = self.params.grid['share']
-        modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-        datapath = os.path.abspath(os.path.join(modpath, f'..\\..\\result\\stepPercent\\{share}.csv'))
-        shareCsvData = pd.DataFrame()
-        if(os.path.exists(datapath)):
-            shareCsvData = pd.read_csv(datapath)
-        
+    
         # Print out the final result
+        share = self.params.grid['share']
         maxPortfolio = self.broker.getvalue()
         maxPortfolioPrint = ('%s Final Portfolio Value: %.2f, Net: %.2f, Percent: %.2f%%, eachBSPos: %d(股), stepPercent: %.2f%%, benchmarkPrice: %.2f(元) totalGridNum: %d(个), Buy/Sell: %s/%s, 持仓量  = %d(股), 现价 = %.2f(元)' % (
             share,
@@ -196,13 +190,8 @@ class TestStrategy(bt.Strategy):
 
         self.params.grid['maxPortfolio'] = maxPortfolio
         self.params.grid['maxPortfolioPrint'] = maxPortfolioPrint
-        shareCsvData.loc[len(shareCsvData)] = self.params.grid
-        # new_row = pd.Series(self.params.grid)
-        # new_row['maxPortfolio'] = maxPortfolio
-        # new_row['maxPortfolioPrint'] = maxPortfolioPrint
-        # shareCsvData = pd.concat([shareCsvData, new_row], ignore_index=True)
-        print(shareCsvData)
-        shareCsvData.to_csv(datapath)
+        new_row = pd.DataFrame([self.params.grid])
+        appendStepPercentCSV(share, new_row)
 
         # self.log(maxPortfolioPrint, doPrint=self.params.isPrint)
         self.log("==========================", doPrint=self.params.isPrint) 
@@ -318,6 +307,49 @@ def getCsvData(share, interval, fromDate, toDate):
 
     return shareDataSlice
 
+def rmFilesUnderFolder(folderPath):
+    if(os.path.exists(folderPath)):
+        shutil.rmtree(folderPath)
+        os.mkdir(folderPath)
+
+def rmStepPercentFolder():
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+    folder = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\stepPercent'))
+    if(os.path.exists(folder)):
+        rmFilesUnderFolder(folder)
+
+def appendStepPercentCSV(share, pd_row):
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+    dataPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\stepPercent\\{share}.csv'))
+    if(len(pd_row)==0):
+        return
+    header = pd_row.columns.values
+    content = pd_row.loc[0].values
+
+    addTitle = False
+    if(not os.path.exists(dataPath)):
+        addTitle = True
+
+    with open(dataPath, 'a+', encoding='UTF-8', newline='') as csvfile:
+        csv_write = csv.writer(csvfile)
+        if(addTitle):
+            csvfile.seek(0, 0)
+            csv_write.writerow(header)
+            csv_write.writerow(content)
+        else:
+            csv_write.writerow(content)
+
+def readStepPercentCSV(share):
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+    dataPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\stepPercent\\{share}.csv'))
+    if(os.path.exists(dataPath)):
+        return pd.read_csv(dataPath)
+
+def writeStepPercentExecl(share, df):
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+    dataPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\ETF_stepPercent.xlsx'))
+    df.to_excel(dataPath, sheet_name=share, index=False)
+
 # 获取最优的每次买入和卖出百分比值
 def getBestStepPercent(share, lowLimitPrice, highLimitPrice, fromDate, toDate,
                         interval='1d', initCash=35000, cashUsageRate=0.9, commission=0.003):
@@ -362,7 +394,6 @@ def getBestStepPercent(share, lowLimitPrice, highLimitPrice, fromDate, toDate,
     #           thestrat.analyzers.DrawDown.get_analysis()['max']['drawdown'], 
     #           thestrat.analyzers.DrawDown.get_analysis()['max']['moneydown'],
     #           thestrat.analyzers.DrawDown.get_analysis()['max']['len']))
-
 
     # else:
     cerebro.run()
@@ -448,8 +479,11 @@ if __name__ == '__main__':
     #     lowLimitPrice = round((lowPrice * _downPoint), 3)
     #     highLimitPrice = round((highPrice * _upPoint), 3)
 
-    getBestStepPercent(share='159652.SZ', lowLimitPrice=0.88, highLimitPrice=1, fromDate='2024-04-01', toDate='2024-06-14')
 
+    rmStepPercentFolder()
+    getBestStepPercent(share='159652.SZ', lowLimitPrice=0.88, highLimitPrice=1, fromDate='2024-04-01', toDate='2024-06-14')
+    # writeStepPercentExecl('159652.SZ', readStepPercentCSV('159652.SZ'))
+    # rmStepPercentFolder()
 
     print('Exiting Main Thread')
 
