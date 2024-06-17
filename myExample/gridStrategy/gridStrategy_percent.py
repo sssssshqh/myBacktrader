@@ -15,24 +15,14 @@ import selectETF
 from collections import OrderedDict
 import yfinance as yf
 import pandas as pd
+import threading
 
-
-# Global
-# Portfolio = {
-#   share: {
-#       maxPortfolio: 0,
-#       maxPortfolioPrint: ''
-#       maxPortfolioGrid: {}
-#   },
-#   ...
-# }
-Portfolio = {}
 
 # Create a Stratey
 # params = {
     # 'isPrint': False
     # 'grid': (
-    #     ('share', 0),        # 股票
+    #     ('share', 0),           # 股票
     #     ('initCash', 0),        # 资金
     #     ('eachBSPos', 0),       # 每次交易份额(股)
     #     ('stepPercent', 0),     # 网格间隔 %
@@ -41,7 +31,6 @@ Portfolio = {}
     #     ('lowLimitPrice', 0),   # 最低限价(元)
     #     ('highLimitPrice', 0),  # 最高限价(元)
     # ) }
-
 class TestStrategy(bt.Strategy):
     
     params = (
@@ -81,7 +70,6 @@ class TestStrategy(bt.Strategy):
                     self.params.grid['share'],
                     self.params.grid['initCash'], self.params.grid['eachBSPos'], 
                     self.params.grid['stepPercent']*100), doPrint=self.params.isPrint)
-
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -180,30 +168,44 @@ class TestStrategy(bt.Strategy):
 
     def stop(self):
 
-        global Portfolio
-        global maxPortfolioPrint
-        global maxPortfolioGrid
-        if (self.broker.getvalue() > Portfolio[self.params.grid['share']].maxPortfolio):
-            Portfolio[self.params.grid['share']].maxPortfolio = self.broker.getvalue()
-            self.log("------------stop----------", doPrint=self.params.isPrint) 
-            # Print out the final result
-            self.params.grid['share'].maxPortfolioPrint = ('%s Final Portfolio Value: %.2f, Net: %.2f, Percent: %.2f%%, eachBSPos: %d(股), stepPercent: %.2f%%, benchmarkPrice: %.2f(元) totalGridNum: %d(个), Buy/Sell: %s/%s, 持仓量  = %d(股), 现价 = %.2f(元)' % (
-                self.params.grid['share'],
-                self.broker.getvalue(),
-                self.broker.getvalue()-self.params.grid['initCash'],
-                (self.broker.getvalue()-self.params.grid['initCash']) / self.params.grid['initCash'] * 100,
-                self.params.grid['eachBSPos'],
-                self.params.grid['stepPercent'] * 100,
-                self.params.grid['benchmarkPrice'],
-                self.params.grid['totalGridNum'],
-                self.totalBuy,
-                self.totalSell,
-                self.broker.getposition(self.datas[0]).size,
-                self.broker.getposition(self.datas[0]).adjbase
-            ))
-            self.log(self.params.grid['share'].maxPortfolioPrint, doPrint=self.params.isPrint)
-            Portfolio[self.params.grid['share']].maxPortfolioGrid = self.params.grid
-            self.log("==========================", doPrint=self.params.isPrint) 
+        self.log("------------stop----------", doPrint=self.params.isPrint) 
+        
+        share = self.params.grid['share']
+        modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+        datapath = os.path.abspath(os.path.join(modpath, f'..\\..\\result\\stepPercent\\{share}.csv'))
+        shareCsvData = pd.DataFrame()
+        if(os.path.exists(datapath)):
+            shareCsvData = pd.read_csv(datapath)
+        
+        # Print out the final result
+        maxPortfolio = self.broker.getvalue()
+        maxPortfolioPrint = ('%s Final Portfolio Value: %.2f, Net: %.2f, Percent: %.2f%%, eachBSPos: %d(股), stepPercent: %.2f%%, benchmarkPrice: %.2f(元) totalGridNum: %d(个), Buy/Sell: %s/%s, 持仓量  = %d(股), 现价 = %.2f(元)' % (
+            share,
+            maxPortfolio,
+            maxPortfolio-self.params.grid['initCash'],
+            (maxPortfolio-self.params.grid['initCash']) / self.params.grid['initCash'] * 100,
+            self.params.grid['eachBSPos'],
+            self.params.grid['stepPercent'] * 100,
+            self.params.grid['benchmarkPrice'],
+            self.params.grid['totalGridNum'],
+            self.totalBuy,
+            self.totalSell,
+            self.broker.getposition(self.datas[0]).size,
+            self.broker.getposition(self.datas[0]).adjbase
+        ))
+
+        self.params.grid['maxPortfolio'] = maxPortfolio
+        self.params.grid['maxPortfolioPrint'] = maxPortfolioPrint
+        shareCsvData.loc[len(shareCsvData)] = self.params.grid
+        # new_row = pd.Series(self.params.grid)
+        # new_row['maxPortfolio'] = maxPortfolio
+        # new_row['maxPortfolioPrint'] = maxPortfolioPrint
+        # shareCsvData = pd.concat([shareCsvData, new_row], ignore_index=True)
+        print(shareCsvData)
+        shareCsvData.to_csv(datapath)
+
+        # self.log(maxPortfolioPrint, doPrint=self.params.isPrint)
+        self.log("==========================", doPrint=self.params.isPrint) 
 
 # 根据输入自动计算每次买入和卖出份额的数值, 返回
 #     eachBSPos 
@@ -269,8 +271,9 @@ def getEachBSPos(share, lowLimitPrice, highLimitPrice, stepPercent, initCash, ca
     grid['eachBSPos'] = eachBSPos
     grid['totalGridNum'] = totalGridNum
     grid['benchmarkPrice'] = round(((priceGrides[0] + priceGrides[-1]) / 2), 3)
-    grid['priceGrides'] = priceGrides
-    grid['cashGrides'] = cashGrides
+
+    grid['priceGrides'] = ', '.join([str(priceGride) for priceGride in priceGrides])
+    grid['cashGrides'] = ', '.join([str(cashGride) for cashGride in cashGrides])
     # 由输入补全
     grid['share'] = share
     grid['initCash'] = initCash
@@ -279,7 +282,6 @@ def getEachBSPos(share, lowLimitPrice, highLimitPrice, stepPercent, initCash, ca
     grid['highLimitPrice'] = highLimitPrice
     grid['cashUsageRate'] = cashUsageRate
     return grid
-
 
 def getYFcsvData(share, interval, fromDate, toDate):
 
@@ -306,7 +308,7 @@ def getCsvData(share, interval, fromDate, toDate):
     formIndexs=shareData[shareData.Date==fromDate].index.tolist()
     toIndexs=shareData[shareData.Date==toDate].index.tolist()
 
-    shareDataSlice = None
+    shareDataSlice = pd.DataFrame()
     if((len(formIndexs)!=0) and len(toIndexs)!=0):
         formIndex = formIndexs[0]
         toIndex = toIndexs[0]
@@ -353,8 +355,8 @@ def getBestStepPercent(share, lowLimitPrice, highLimitPrice, fromDate, toDate,
     # cerebro.addanalyzer(btanalyzers.transactions, _name='transactions')
 
     # if(isPrint):
-    #     # Run over everything
     #     thestrats = cerebro.run()
+    #     # Run over everything
     #     thestrat = thestrats[0]
     #     print('DrawDown, max.drawdown: %.2f, max.moneydown: %.2f%%, max.len: %s' %(
     #           thestrat.analyzers.DrawDown.get_analysis()['max']['drawdown'], 
@@ -425,29 +427,29 @@ def readETFResult():
     etfData = pd.read_excel(etfResultPath, sheet_name='ETF')
     return etfData
 
+
 if __name__ == '__main__':
 
-    downPoint = 0.9
-    upPoint = 1.1
+    _downPoint = 1
+    _upPoint = 1
 
-    fromDate = '2024-04-01'
-    toDate = '2024-06-14'
-    interval = '1d'
+    _fromDate = '2024-04-01'
+    _toDate = '2024-06-14'
+    _interval = '1d'
     
-    etfData = readETFResult()
-    for share in etfData['StockCode']:
-        shareData = getCsvData(share=share, interval=interval, fromDate=fromDate, toDate=toDate)
-        print(type(shareData))
-        print(shareData)
-        adjClose = shareData.loc[:, 'Adj Close']
-        print(type(adjClose))
-        print(adjClose)
-        lowPrice = adjClose.min()
-        highPrice = adjClose.max()
-        lowLimitPrice = round((lowPrice * downPoint), 3)
-        highLimitPrice = round((highPrice * upPoint), 3)
+    # etfData = readETFResult()
+    # for share in etfData['StockCode']:
+    #     shareData = getCsvData(share=share, interval=_interval, fromDate=_fromDate, toDate=_toDate)
+    #     if (len(shareData) == 0):
+    #         continue
+    #     adjClose = shareData.loc[:, 'Adj Close']
+    #     lowPrice = adjClose.min()
+    #     highPrice = adjClose.max()
+    #     lowLimitPrice = round((lowPrice * _downPoint), 3)
+    #     highLimitPrice = round((highPrice * _upPoint), 3)
 
-        # getBestStepPercent(share='159652.SZ', lowLimitPrice=0.88, highLimitPrice=1, fromDate='2024-04-01', toDate='2024-06-14')
-        # if(maxPortfolio > 0):
-        #     print(maxPortfolioGrid)
-        #     print(maxPortfolioPrint)
+    getBestStepPercent(share='159652.SZ', lowLimitPrice=0.88, highLimitPrice=1, fromDate='2024-04-01', toDate='2024-06-14')
+
+
+    print('Exiting Main Thread')
+
