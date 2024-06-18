@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
@@ -17,6 +18,8 @@ import yfinance as yf
 import pandas as pd
 import shutil
 import csv
+import threading
+import msvcrt
 
 # Create a Stratey
 # params = {
@@ -173,7 +176,7 @@ class TestStrategy(bt.Strategy):
         # Print out the final result
         share = self.params.grid['share']
         maxPortfolio = self.broker.getvalue()
-        maxPortfolioPrint = ('%s Final Portfolio Value: %.2f, Net: %.2f, Percent: %.2f%%, eachBSPos: %d(股), stepPercent: %.2f%%, benchmarkPrice: %.2f(元) totalGridNum: %d(个), Buy/Sell: %s/%s, 持仓量  = %d(股), 现价 = %.2f(元)' % (
+        maxPortfolioPrint = ('Share: %s; FinalPortfolioValue: %.2f; Net: %.2f; Percent: %.2f%%; eachBSPos: %d(stocks); stepPercent: %.2f%%; benchmarkPrice: %.2f(RMB); totalGridNum: %d; Buy/Sell: %s/%s; OpenInterest: %d(stocks); currentPrice: %.2f(RMB)' % (
             share,
             maxPortfolio,
             maxPortfolio-self.params.grid['initCash'],
@@ -261,8 +264,8 @@ def getEachBSPos(share, lowLimitPrice, highLimitPrice, stepPercent, initCash, ca
     grid['totalGridNum'] = totalGridNum
     grid['benchmarkPrice'] = round(((priceGrides[0] + priceGrides[-1]) / 2), 3)
 
-    grid['priceGrides'] = ', '.join([str(priceGride) for priceGride in priceGrides])
-    grid['cashGrides'] = ', '.join([str(cashGride) for cashGride in cashGrides])
+    grid['priceGrides'] = ' '.join([str(priceGride) for priceGride in priceGrides])
+    grid['cashGrides'] = ' '.join([str(cashGride) for cashGride in cashGrides])
     # 由输入补全
     grid['share'] = share
     grid['initCash'] = initCash
@@ -311,6 +314,8 @@ def rmFilesUnderFolder(folderPath):
     if(os.path.exists(folderPath)):
         shutil.rmtree(folderPath)
         os.mkdir(folderPath)
+    else:
+        os.mkdir(folderPath)
 
 def rmStepPercentFolder():
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -323,21 +328,31 @@ def appendStepPercentCSV(share, pd_row):
     dataPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\stepPercent\\{share}.csv'))
     if(len(pd_row)==0):
         return
+    
     header = pd_row.columns.values
     content = pd_row.loc[0].values
+    header = ', '.join([str(headerData) for headerData in header]) + '\n'
+    content = ', '.join([str(contentData) for contentData in content]) + '\n'
 
+    new_row = ''
     addTitle = False
     if(not os.path.exists(dataPath)):
         addTitle = True
+        new_row = header + content
+    else:
+        addTitle = False
+        new_row = content
 
-    with open(dataPath, 'a+', encoding='UTF-8', newline='') as csvfile:
-        csv_write = csv.writer(csvfile)
+    global threadLock
+    threadLock.acquire_lock()
+    with open(dataPath, 'a', encoding='UTF-8') as csvfile: 
         if(addTitle):
             csvfile.seek(0, 0)
-            csv_write.writerow(header)
-            csv_write.writerow(content)
-        else:
-            csv_write.writerow(content)
+        csvfile.write(new_row)
+        csvfile.flush()
+        csvfile.close()
+    threadLock.release_lock()
+
 
 def readStepPercentCSV(share):
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -458,6 +473,7 @@ def readETFResult():
     etfData = pd.read_excel(etfResultPath, sheet_name='ETF')
     return etfData
 
+threadLock = threading.Lock()
 
 if __name__ == '__main__':
 
@@ -479,10 +495,11 @@ if __name__ == '__main__':
     #     lowLimitPrice = round((lowPrice * _downPoint), 3)
     #     highLimitPrice = round((highPrice * _upPoint), 3)
 
+    
 
     rmStepPercentFolder()
     getBestStepPercent(share='159652.SZ', lowLimitPrice=0.88, highLimitPrice=1, fromDate='2024-04-01', toDate='2024-06-14')
-    # writeStepPercentExecl('159652.SZ', readStepPercentCSV('159652.SZ'))
+    writeStepPercentExecl('159652.SZ', readStepPercentCSV('159652.SZ'))
     # rmStepPercentFolder()
 
     print('Exiting Main Thread')

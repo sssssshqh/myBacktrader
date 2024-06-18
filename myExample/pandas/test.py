@@ -2,22 +2,19 @@
 Author: Huang, Quan Hang 250901214@qq.com
 Date: 2024-06-04 23:02:10
 LastEditors: Huang, Quan Hang quanhang.huang@siemens.com
-LastEditTime: 2024-06-17 17:56:43
+LastEditTime: 2024-06-18 11:29:29
 FilePath: \myBacktrader\myExample\pandas\test.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
-import pandas as pd
+import msvcrt
+import csv
 
-df2 = pd.DataFrame([['b', 20], ['a', 10], ['c', 30]], columns= ["let","num"], index=["A1", "B2", "C"])
+with open('./11.csv', 'a+', encoding='UTF-8', newline='') as csvfile:
+    csv_write = csv.writer(csvfile)
+    fileNo:int = csvfile.fileno()
+    msvcrt.locking(fileNo, msvcrt.LK_LOCK, 10)
+    csvfile.seek(0, 0)
+    csv_write.writerow([1,3])
 
-print(df2)
-
-se = pd.Series()
-se['let']='h1'
-se['num']='n1'
-
-print("111111111111111")
-print(se.T)
-print("111111111111111")
-aa = pd.concat([df2, se], ignore_index=True, axis=1)
-print(aa)
+    msvcrt.locking(fileNo, msvcrt.LK_UNLCK, 10)
+    csvfile.close()
