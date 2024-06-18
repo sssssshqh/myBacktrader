@@ -174,27 +174,27 @@ class TestStrategy(bt.Strategy):
         self.log("------------stop----------", doPrint=self.params.isPrint) 
     
         # Print out the final result
-        share = self.params.grid['share']
-        maxPortfolio = self.broker.getvalue()
-        maxPortfolioPrint = ('Share: %s; FinalPortfolioValue: %.2f; Net: %.2f; Percent: %.2f%%; eachBSPos: %d(stocks); stepPercent: %.2f%%; benchmarkPrice: %.2f(RMB); totalGridNum: %d; Buy/Sell: %s/%s; OpenInterest: %d(stocks); currentPrice: %.2f(RMB)' % (
-            share,
-            maxPortfolio,
-            maxPortfolio-self.params.grid['initCash'],
-            (maxPortfolio-self.params.grid['initCash']) / self.params.grid['initCash'] * 100,
-            self.params.grid['eachBSPos'],
-            self.params.grid['stepPercent'] * 100,
-            self.params.grid['benchmarkPrice'],
-            self.params.grid['totalGridNum'],
-            self.totalBuy,
-            self.totalSell,
-            self.broker.getposition(self.datas[0]).size,
-            self.broker.getposition(self.datas[0]).adjbase
-        ))
+        stepPercent = self.params.grid['stepPercent'] * 100
+        MaxDrawDown = self.analyzers.DrawDown.get_analysis()['max']['drawdown']
+        MaxMoneydown = self.analyzers.DrawDown.get_analysis()['max']['moneydown']
+        Net = self.broker.getvalue()-self.params.grid['initCash']
+        NetPecent = Net / self.params.grid['initCash'] * 100
+        OpenInterest = self.broker.getposition(self.datas[0]).size
+        currentPrice = self.broker.getposition(self.datas[0]).adjbase
 
-        self.params.grid['maxPortfolio'] = maxPortfolio
-        self.params.grid['maxPortfolioPrint'] = maxPortfolioPrint
+        self.params.grid['maxPortfolio'] = f'{self.broker.getvalue():.2f}'
+        self.params.grid['Net'] = f'{Net:.2f}'
+        self.params.grid['Net(%)'] = f'{NetPecent:.2f}'
+        self.params.grid['stepPercent(%)']= f'{stepPercent:.2f}'
+        self.params.grid['MaxDrawDown(%)'] = f'{MaxDrawDown:.2f}'
+        self.params.grid['MaxMoneydown(RMB)'] = f'{MaxMoneydown:.2f}'
+        self.params.grid['OpenInterest(stocks)'] = OpenInterest
+        self.params.grid['currentPrice'] = f'{currentPrice:.2f}'
+        self.params.grid['totalBuy'] = self.totalBuy
+        self.params.grid['totalSell'] = self.totalSell
+        
         new_row = pd.DataFrame([self.params.grid])
-        appendStepPercentCSV(share, new_row)
+        appendStepPercentCSV(self.params.grid['share'], new_row)
 
         # self.log(maxPortfolioPrint, doPrint=self.params.isPrint)
         self.log("==========================", doPrint=self.params.isPrint) 
@@ -323,6 +323,7 @@ def rmStepPercentFolder():
     if(os.path.exists(folder)):
         rmFilesUnderFolder(folder)
 
+threadLock = threading.Lock()
 def appendStepPercentCSV(share, pd_row):
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
     dataPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\stepPercent\\{share}.csv'))
@@ -331,6 +332,10 @@ def appendStepPercentCSV(share, pd_row):
     
     header = pd_row.columns.values
     content = pd_row.loc[0].values
+
+    if((len(header)==0) or (len(content)==0)):
+        return
+    
     header = ', '.join([str(headerData) for headerData in header]) + '\n'
     content = ', '.join([str(contentData) for contentData in content]) + '\n'
 
@@ -352,18 +357,6 @@ def appendStepPercentCSV(share, pd_row):
         csvfile.flush()
         csvfile.close()
     threadLock.release_lock()
-
-
-def readStepPercentCSV(share):
-    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    dataPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\stepPercent\\{share}.csv'))
-    if(os.path.exists(dataPath)):
-        return pd.read_csv(dataPath)
-
-def writeStepPercentExecl(share, df):
-    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    dataPath = os.path.abspath(os.path.join(modpath, f'..\\..\\execl\\ETF_stepPercent.xlsx'))
-    df.to_excel(dataPath, sheet_name=share, index=False)
 
 # 获取最优的每次买入和卖出百分比值
 def getBestStepPercent(share, lowLimitPrice, highLimitPrice, fromDate, toDate,
@@ -473,34 +466,27 @@ def readETFResult():
     etfData = pd.read_excel(etfResultPath, sheet_name='ETF')
     return etfData
 
-threadLock = threading.Lock()
 
 if __name__ == '__main__':
-
-    _downPoint = 1
-    _upPoint = 1
 
     _fromDate = '2024-04-01'
     _toDate = '2024-06-14'
     _interval = '1d'
     
-    # etfData = readETFResult()
-    # for share in etfData['StockCode']:
-    #     shareData = getCsvData(share=share, interval=_interval, fromDate=_fromDate, toDate=_toDate)
-    #     if (len(shareData) == 0):
-    #         continue
-    #     adjClose = shareData.loc[:, 'Adj Close']
-    #     lowPrice = adjClose.min()
-    #     highPrice = adjClose.max()
-    #     lowLimitPrice = round((lowPrice * _downPoint), 3)
-    #     highLimitPrice = round((highPrice * _upPoint), 3)
-
-    
-
     rmStepPercentFolder()
-    getBestStepPercent(share='159652.SZ', lowLimitPrice=0.88, highLimitPrice=1, fromDate='2024-04-01', toDate='2024-06-14')
-    writeStepPercentExecl('159652.SZ', readStepPercentCSV('159652.SZ'))
-    # rmStepPercentFolder()
+    etfData = readETFResult()
+    for share in etfData['StockCode']:
+        shareData = getCsvData(share=share, interval=_interval, fromDate=_fromDate, toDate=_toDate)
+        if (len(shareData) == 0):
+            continue
+        adjClose = shareData.loc[:, 'Adj Close']
+        lowPrice = adjClose.min()
+        highPrice = adjClose.max()
+        lowLimitPrice = round((lowPrice * 1), 3)
+        highLimitPrice = round((highPrice * 1), 3)
+
+        getBestStepPercent(share=share, lowLimitPrice=lowLimitPrice, highLimitPrice=highLimitPrice, fromDate=_fromDate, toDate=_toDate, interval=_interval)
+        break
 
     print('Exiting Main Thread')
 

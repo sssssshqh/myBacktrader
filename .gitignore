@@ -72,3 +72,4 @@ datas/*.py
 
 myEnv/
 execl/~*
+execl/stepPercent/
